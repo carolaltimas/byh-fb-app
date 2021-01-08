@@ -1,6 +1,7 @@
 import React, { useState, createContext, useContext } from 'react';
 //import {API_BASE_URL} from '../config';
 import {FirebaseContext} from '../contexts/firebase-context';
+import authService from '../services/auth-service';
 import {API_BASE_URL} from '../config';
 import {urlFactory} from '../helpers/url-factory';
 const axios = require('axios');
@@ -8,20 +9,24 @@ const axios = require('axios');
 export const AuthContext = createContext();
 
 export function AuthContextProvider(props){
+    //subscribe to fb token changes
+    
     //state
     const baseUrl = API_BASE_URL;
+
     const [authState,setAuthState] = useState({
         authKey:null,
         isLoggedIn:false,
         authLoading:false,
-        authError:null
+        authError:null,
+        initialCheck:true
     });
 
     const [currentUser,setCurrentUser] = useState(null);
 
     const updateState = newState => setAuthState(Object.assign({}, authState, newState));
 
-    const fb = useContext(FirebaseContext); 
+    const fb = useContext(FirebaseContext);
 
     const resetAuth = (err) => {
         let newState = {...authState};
@@ -29,7 +34,8 @@ export function AuthContextProvider(props){
         newState.isLoggedIn = false;
         newState.authLoading = false;
         newState.authError = err ? err : null;
-        
+        newState.initialCheck = false;
+
         updateState(newState);
     }
 
@@ -45,7 +51,8 @@ export function AuthContextProvider(props){
         newState.authKey = authToken;
         newState.authError = null;
         newState.authLoading = false;
-    
+        newState.initialCheck = false;
+
         updateState(newState);
     }
     
@@ -161,6 +168,26 @@ export function AuthContextProvider(props){
         }
     }
 
+    const logout = async() => {
+        try{
+            await fb.logout();
+            resetAuth();
+        }
+        catch(e){
+            console.warn('Error logging out: ',e);
+            throw e; 
+        }
+    }
+    authService.currentFbToken.subscribe(async (authToken) => {
+        if(authToken){
+            await getUserDetails(authToken);
+            setAuth(authToken);
+        }
+        else{
+            resetAuth();
+        }
+    });
+
     return (
         <AuthContext.Provider value={{
             isLoggedIn:authState.isLoggedIn,
@@ -168,9 +195,11 @@ export function AuthContextProvider(props){
             authKey:authState.authKey,
             authLoading:authState.authLoading,
             currentUser:currentUser,
+            initialCheck:authState.initialCheck,
             login,
             createUser,
-            googleSignIn
+            googleSignIn,
+            logout
             }}>
             {props.children}
         </AuthContext.Provider>
